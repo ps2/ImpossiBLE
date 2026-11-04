@@ -60,6 +60,24 @@ final class CentralLifecycleTests: XCTestCase {
         XCTAssertEqual(delegate.onQueue.filter { !$0 }.count, 0, "a state update arrived off the central's queue")
         _ = central
     }
+
+    func testEveryInitializerReportsTheInitialStateTheSameNumberOfTimes() {
+        let withOptions = CountingDelegate()
+        let withOptionsQueue = DispatchQueue(label: "impossible.tests.central.options")
+        let a = CBCentralManager(delegate: withOptions, queue: withOptionsQueue, options: nil)
+
+        let withoutOptions = CountingDelegate()
+        let withoutOptionsQueue = DispatchQueue(label: "impossible.tests.central.nooptions")
+        let b = CBCentralManager(delegate: withoutOptions, queue: withoutOptionsQueue)
+
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        withOptionsQueue.sync {}
+        withoutOptionsQueue.sync {}
+
+        XCTAssertGreaterThan(withOptions.count, 0)
+        XCTAssertEqual(withoutOptions.count, withOptions.count)
+        _ = (a, b)
+    }
 }
 
 private final class CentralDelegate: NSObject, CBCentralManagerDelegate {
@@ -85,6 +103,23 @@ private final class QueueRecordingDelegate: NSObject, CBCentralManagerDelegate {
         let isOnQueue = DispatchQueue.getSpecific(key: key) == true
         lock.lock()
         calls.append(isOnQueue)
+        lock.unlock()
+    }
+}
+
+private final class CountingDelegate: NSObject, CBCentralManagerDelegate {
+    private let lock = NSLock()
+    private var updates = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return updates
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        lock.lock()
+        updates += 1
         lock.unlock()
     }
 }
